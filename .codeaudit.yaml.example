@@ -1,0 +1,28 @@
+# CodeAudit configuration example.
+# Copy to .codeaudit.yaml and customize.
+
+llm:
+  provider: openai          # openai | azure | none
+  model: gpt-4o             # any OpenAI-compatible model
+  max_tokens: 2048
+  temperature: 0.2
+
+scan:
+  skill_dirs:
+    - ./skills              # built-in skills directory
+    # - ./company-skills    # your proprietary skill files
+  enabled_domains: []       # empty = all domains
+  frameworks: []            # empty = auto-detect from imports
+  skip_paths:
+    - vendor
+    - testdata
+    - .git
+    - node_modules
+  max_workers: 8
+
+report:
+  format: text              # text | json | markdown | sarif
+  output: "-"               # "-" = stdout, otherwise a file path
+  verbose: false
+
+log_level: info             # debug | info | warn | error

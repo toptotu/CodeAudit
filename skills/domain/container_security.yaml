@@ -1,0 +1,135 @@
+id: container-security-expert
+name: "Container & Kubernetes Security Patterns"
+version: "1.0.0"
+domain: "container"
+description: |
+  Expert skill for container and Kubernetes security: Docker SDK misuse,
+  K8s RBAC hardening, seccomp/AppArmor profiles, supply chain security,
+  and runtime escape vectors.
+author: "Platform Security Team"
+tags:
+  - container
+  - docker
+  - kubernetes
+  - k8s
+
+patterns:
+  - id: k8s-hostpath-volume
+    name: "K8s: HostPath Volume Mount"
+    pattern: 'HostPath.*Path:'
+    is_regex: true
+    severity: HIGH
+    description: |
+      HostPath volumes mount a directory from the host node into the pod,
+      potentially exposing sensitive host files or enabling container escape.
+    suggestion: |
+      Avoid HostPath volumes. Use PersistentVolumeClaims with appropriate storage classes.
+    references:
+      - "CWE-668"
+      - "K8s Security Best Practices"
+    tags: ["container", "kubernetes"]
+
+  - id: k8s-allow-privilege-escalation
+    name: "K8s: AllowPrivilegeEscalation Not Disabled"
+    pattern: 'AllowPrivilegeEscalation:\s*nil|AllowPrivilegeEscalation:\s*true'
+    is_regex: true
+    severity: HIGH
+    description: |
+      When AllowPrivilegeEscalation is not explicitly set to false, a process
+      inside the container may gain more privileges than its parent.
+    suggestion: |
+      Set AllowPrivilegeEscalation: pointer(false) in the container SecurityContext.
+    references:
+      - "CWE-250"
+    tags: ["container", "kubernetes"]
+
+  - id: k8s-read-only-root-missing
+    name: "K8s: ReadOnlyRootFilesystem Not Set"
+    pattern: 'ReadOnlyRootFilesystem:\s*false|ReadOnlyRootFilesystem:\s*nil'
+    is_regex: true
+    severity: MEDIUM
+    description: |
+      A writable root filesystem allows attackers to modify container contents
+      after initial deployment, enabling persistence.
+    suggestion: |
+      Set ReadOnlyRootFilesystem: pointer(true) and use emptyDir for writable temporary storage.
+    references:
+      - "CWE-732"
+    tags: ["container", "kubernetes"]
+
+  - id: docker-pull-always-missing
+    name: "K8s: ImagePullPolicy Not Always"
+    pattern: 'ImagePullPolicy.*IfNotPresent|ImagePullPolicy.*Never'
+    is_regex: true
+    severity: LOW
+    description: |
+      Using IfNotPresent or Never as image pull policy may run a stale image
+      that lacks security patches.
+    suggestion: |
+      Use ImagePullPolicy: Always for production workloads, combined with pinned digests.
+    references:
+      - "CWE-494"
+    tags: ["container", "kubernetes"]
+
+  - id: k8s-seccomp-missing
+    name: "K8s: Seccomp Profile Not Set"
+    pattern: 'SeccompProfile:\s*nil|Annotations.*seccomp'
+    is_regex: true
+    severity: MEDIUM
+    description: |
+      Without a seccomp profile, the container can make any system call,
+      increasing the attack surface for kernel exploits.
+    suggestion: |
+      Set SeccompProfile to RuntimeDefault or a custom profile that allowlists required syscalls.
+    references:
+      - "CWE-250"
+    tags: ["container", "kubernetes"]
+
+prompts:
+  - id: container-deep-review
+    name: "Container Security Deep LLM Review"
+    system_msg: |
+      You are a container and Kubernetes security specialist.
+
+      Analyze the provided Go source code for:
+
+      1. **Docker SDK Security**
+         - Privileged containers (Privileged: true)
+         - Dangerous capabilities (SYS_ADMIN, NET_ADMIN, ALL)
+         - Host namespace sharing (network, pid, ipc)
+         - Insecure volume mounts (docker socket, /etc, /)
+         - Missing resource limits
+         - Image pull without digest verification
+
+      2. **Kubernetes client-go Security**
+         - Pods running as root
+         - Missing SecurityContext hardening
+         - Wildcard RBAC roles
+         - Auto-mounted service account tokens
+         - HostPath volumes
+         - Missing network policies
+         - Missing Pod Security Standards enforcement
+
+      3. **Supply Chain**
+         - Using mutable image tags
+         - No image signature verification (Cosign/Notary)
+         - No SBOM generation
+
+      4. **Runtime Security**
+         - Missing seccomp profiles
+         - Missing AppArmor/SELinux labels
+         - Writable root filesystem
+
+      For each issue, use this format:
+      FINDING: <title>
+      SEVERITY: <CRITICAL|HIGH|MEDIUM|LOW|INFO>
+      LINE: <line>
+      DESCRIPTION: <description>
+      SUGGESTION: <suggestion>
+      ---
+    user_msg_tmpl: |
+      File: {{.FilePath}}
+
+      ```go
+      {{.Source}}
+      ```

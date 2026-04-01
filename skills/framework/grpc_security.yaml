@@ -1,0 +1,104 @@
+id: grpc-framework-security
+name: "gRPC Framework Security Patterns"
+version: "1.0.0"
+domain: "grpc"
+description: |
+  Expert skill for google.golang.org/grpc security: mTLS, interceptors,
+  metadata auth, reflection API exposure, deadline propagation, and
+  stream security.
+author: "Infrastructure Security Team"
+tags:
+  - framework
+  - grpc
+  - golang
+
+patterns:
+  - id: grpc-reflection-enabled
+    name: "gRPC: Server Reflection Enabled in Production"
+    pattern: 'reflection\.Register\('
+    is_regex: true
+    severity: HIGH
+    description: |
+      gRPC server reflection exposes all service definitions to any unauthenticated
+      client, enabling service enumeration and targeted attacks.
+    suggestion: |
+      Disable reflection in production, or gate it behind an interceptor that
+      requires authentication.
+    references:
+      - "CWE-200"
+    tags: ["framework", "grpc"]
+
+  - id: grpc-no-deadline
+    name: "gRPC: Client Call Without Deadline"
+    pattern: 'grpc\.Dial\(|grpc\.NewClient\('
+    is_regex: true
+    severity: MEDIUM
+    description: |
+      gRPC clients that do not set deadlines on calls can block indefinitely,
+      enabling resource exhaustion via slow server attacks.
+    suggestion: |
+      Always propagate context with deadline: ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+    references:
+      - "CWE-400"
+    tags: ["framework", "grpc"]
+
+  - id: grpc-metadata-no-auth
+    name: "gRPC: Metadata Not Validated in Interceptor"
+    pattern: 'metadata\.FromIncomingContext\('
+    is_regex: true
+    severity: INFO
+    description: |
+      Extracting gRPC metadata without validating the authorization header
+      may allow unauthenticated access.
+    suggestion: |
+      Implement a UnaryServerInterceptor that validates the authorization token
+      before allowing any RPC to proceed.
+    references:
+      - "CWE-306"
+    tags: ["framework", "grpc"]
+
+  - id: grpc-tls-mutual-missing
+    name: "gRPC: One-Way TLS (mTLS Not Configured)"
+    pattern: 'credentials\.NewTLS\('
+    is_regex: true
+    severity: MEDIUM
+    description: |
+      Server-only TLS authenticates the server to the client but not vice versa.
+      For internal microservices, mTLS provides stronger identity guarantees.
+    suggestion: |
+      Configure credentials.NewTLS with tls.Config.ClientAuth = tls.RequireAndVerifyClientCert
+      and a CA pool for client certificate verification.
+    references:
+      - "CWE-295"
+    tags: ["framework", "grpc"]
+
+prompts:
+  - id: grpc-llm-review
+    name: "gRPC Security LLM Review"
+    system_msg: |
+      You are a gRPC and microservices security expert specializing in Go.
+
+      Analyze the provided source code for:
+      - Missing transport credentials (plaintext gRPC)
+      - Missing interceptors (auth, rate-limit, panic recovery, logging)
+      - gRPC reflection enabled in production
+      - Metadata injection (attacker-controlled metadata fields influencing logic)
+      - Stream hijacking (missing authentication on streaming RPCs)
+      - Message size limits not set (allowing giant messages to exhaust memory)
+      - Missing deadline propagation from client calls
+      - Privilege escalation through missing per-RPC authorization
+      - Insecure proto field exposure (sensitive fields returned unnecessarily)
+
+      For each issue, use this format:
+      FINDING: <title>
+      SEVERITY: <CRITICAL|HIGH|MEDIUM|LOW|INFO>
+      LINE: <line>
+      DESCRIPTION: <description>
+      SUGGESTION: <suggestion>
+      ---
+    user_msg_tmpl: |
+      File: {{.FilePath}}
+
+      ```go
+      {{.Source}}
+      ```
