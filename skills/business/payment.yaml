@@ -1,0 +1,125 @@
+id: business-payment-security
+name: "Payment & Financial Business Logic Security"
+version: "1.0.0"
+domain: "business"
+description: |
+  Business-logic security skill for payment and financial systems:
+  amount manipulation, race conditions in balance checks, idempotency
+  key misuse, negative amount attacks, and PCI-DSS relevant patterns.
+author: "Payments Security Team"
+tags:
+  - business
+  - payment
+  - finance
+  - pci-dss
+
+patterns:
+  - id: biz-amount-no-validate
+    name: "Payment Amount Not Validated"
+    pattern: 'amount|Amount|price|Price'
+    is_regex: true
+    severity: HIGH
+    description: |
+      Financial amounts parsed from user input without validation of sign,
+      range, and precision may allow negative amounts, zero-value charges,
+      or integer overflow attacks.
+    suggestion: |
+      Validate: amount > 0, amount <= maxAllowed, precision matches currency rules.
+      Use decimal libraries (shopspring/decimal) rather than float64 for currency.
+    references:
+      - "CWE-20"
+      - "OWASP Business Logic"
+    tags: ["business", "payment"]
+
+  - id: biz-float-currency
+    name: "Float64 Used for Currency Calculation"
+    pattern: 'float64.*(?:price|amount|total|balance|fee)'
+    is_regex: true
+    severity: HIGH
+    description: |
+      Using float64 for monetary calculations causes rounding errors (e.g.,
+      0.1 + 0.2 != 0.3) which can be exploited to steal fractional cents.
+    suggestion: |
+      Use integer arithmetic (cents/pence) or a decimal library such as shopspring/decimal.
+    references:
+      - "CWE-682"
+    tags: ["business", "payment"]
+
+  - id: biz-idempotency-missing
+    name: "Payment Endpoint Missing Idempotency Key"
+    pattern: 'func.*(?:Charge|Pay|Transfer|Refund)\('
+    is_regex: true
+    severity: HIGH
+    description: |
+      Payment operations without idempotency keys can be retried and charged
+      multiple times on network errors.
+    suggestion: |
+      Accept and store an idempotency key per payment request. Return the same
+      result for duplicate requests within the idempotency window.
+    references:
+      - "Stripe Idempotency Guide"
+    tags: ["business", "payment"]
+
+  - id: biz-toctou-balance
+    name: "TOCTOU Race in Balance Check"
+    pattern: 'GetBalance.*Deduct|CheckBalance.*Charge'
+    is_regex: true
+    severity: CRITICAL
+    description: |
+      Checking a balance then performing a deduction in separate non-atomic
+      operations allows concurrent requests to spend the same funds twice.
+    suggestion: |
+      Use database row-level locking (SELECT FOR UPDATE) or optimistic concurrency
+      with version fields to make balance checks and deductions atomic.
+    references:
+      - "CWE-362"
+      - "OWASP: Insufficient Anti-automation"
+    tags: ["business", "payment", "race"]
+
+prompts:
+  - id: payment-logic-review
+    name: "Payment Business Logic LLM Review"
+    system_msg: |
+      You are a payment and financial systems security expert.
+
+      Analyze the provided Go source code for business logic vulnerabilities:
+
+      1. **Amount Manipulation**
+         - Negative amounts to credit accounts
+         - Zero-value transactions bypassing fraud checks
+         - Precision/rounding exploits using float64
+
+      2. **Race Conditions**
+         - Double-spending: balance checked and decremented in non-atomic operations
+         - Concurrent refunds of the same transaction
+
+      3. **Idempotency**
+         - Missing idempotency keys allowing duplicate charges
+         - Idempotency key not tied to specific parameters (can be reused for different amounts)
+
+      4. **Authorization**
+         - Horizontal privilege escalation: using other users' payment methods
+         - Missing ownership checks on refund operations
+
+      5. **PCI-DSS**
+         - PANs (card numbers) logged or stored without masking
+         - CVV stored after authorization
+         - Weak or missing encryption of cardholder data
+
+      6. **Workflow Bypass**
+         - Skipping payment verification states (pending → completed without gateway confirmation)
+         - Order price recalculation after checkout lock
+
+      For each issue, use this format:
+      FINDING: <title>
+      SEVERITY: <CRITICAL|HIGH|MEDIUM|LOW|INFO>
+      LINE: <line>
+      DESCRIPTION: <description>
+      SUGGESTION: <suggestion>
+      ---
+    user_msg_tmpl: |
+      File: {{.FilePath}}
+
+      ```go
+      {{.Source}}
+      ```

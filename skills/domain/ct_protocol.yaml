@@ -1,0 +1,117 @@
+id: ct-protocol-expert
+name: "Certificate Transparency Protocol Security"
+version: "1.0.0"
+domain: "ct"
+description: |
+  Domain-expert skill for Certificate Transparency (RFC 6962 / RFC 9162) protocol
+  implementations in Go. Covers SCT verification, Merkle tree integrity, STH
+  signature checking, log list validation, and timestamp bounds enforcement.
+author: "CT/PKI Security Team"
+tags:
+  - ct
+  - pki
+  - protocol
+  - tls
+
+patterns:
+  - id: ct-get-entries-unbounded
+    name: "CT: Unbounded get-entries Request"
+    pattern: 'GetEntries\([^,]+,\s*0\s*,'
+    is_regex: true
+    severity: HIGH
+    description: |
+      Requesting entries starting from index 0 without an upper bound limit can
+      result in enormous responses that exhaust memory.
+    suggestion: |
+      Always specify a maximum batch size (e.g., 256 entries) and paginate.
+    references:
+      - "RFC 6962 §4.6"
+    tags: ["ct", "dos"]
+
+  - id: ct-root-cert-no-check
+    name: "CT: Root Certificate Not Validated Against Accepted Roots"
+    pattern: 'AddChain|add-chain'
+    is_regex: true
+    severity: CRITICAL
+    description: |
+      Submitting a certificate chain to a CT log without first verifying that the
+      root is in the log's accepted root list will result in rejection or may
+      indicate a mismatch between expected and actual log policy.
+    suggestion: |
+      Call GetAcceptedRoots() first and verify the chain's root is included.
+    references:
+      - "RFC 6962 §4.1"
+    tags: ["ct", "pki"]
+
+  - id: ct-sct-extension-ignored
+    name: "CT: SCT Extensions Field Ignored"
+    pattern: 'Extensions\s*[:=]'
+    is_regex: true
+    severity: MEDIUM
+    description: |
+      The extensions field in an SCT must be checked for unknown critical extensions.
+      Ignoring it may allow future protocol changes to bypass validation.
+    suggestion: |
+      Reject SCTs with non-empty extensions that your implementation does not understand.
+    references:
+      - "RFC 6962 §3.2"
+    tags: ["ct"]
+
+  - id: ct-monitor-no-dedup
+    name: "CT Monitor: No Deduplication of Processed Entries"
+    pattern: 'processEntry|ProcessEntry|handleEntry'
+    is_regex: true
+    severity: MEDIUM
+    description: |
+      Without deduplication, a CT monitor may process and alert on the same leaf
+      entry multiple times, causing false positives and resource waste.
+    suggestion: |
+      Track processed leaf indices in a persistent store and skip already-seen entries.
+    references:
+      - "RFC 6962 §5.3"
+    tags: ["ct", "monitor"]
+
+prompts:
+  - id: ct-protocol-deep-review
+    name: "CT Protocol Deep Security Review"
+    system_msg: |
+      You are a Certificate Transparency (CT) protocol security expert who has deeply
+      studied RFC 6962, RFC 9162, and the google/certificate-transparency-go codebase.
+
+      Analyze the provided Go source code for these CT-specific vulnerability classes:
+
+      1. **SCT Forgery**: Missing signature verification, wrong key used, or
+         algorithm agility not enforced.
+
+      2. **Merkle Tree Attacks**: Missing proof verification (inclusion/consistency),
+         hash confusion between leaf and internal nodes (second preimage attacks),
+         off-by-one in tree height.
+
+      3. **Timestamp Manipulation**: No bounds on future timestamps, no enforcement
+         of Maximum Merge Delay, accepting revoked log keys.
+
+      4. **Split View / Equivocation**: Accepting STHs without consistency proof
+         checks against a known-good previous STH.
+
+      5. **Log List Staleness**: Not refreshing the trusted log list, accepting
+         entries from logs removed from the trusted set.
+
+      6. **Denial of Service**: Unbounded get-entries, no retry backoff, synchronous
+         proof fetching in hot path.
+
+      7. **Gossip Protocol Issues**: Not implementing CT gossip (RFC 8446 §4.4.2),
+         allowing undetected split-view attacks.
+
+      For each issue, use this format:
+      FINDING: <title>
+      SEVERITY: <CRITICAL|HIGH|MEDIUM|LOW|INFO>
+      LINE: <line>
+      DESCRIPTION: <description>
+      SUGGESTION: <suggestion>
+      ---
+    user_msg_tmpl: |
+      File: {{.FilePath}}
+
+      ```go
+      {{.Source}}
+      ```

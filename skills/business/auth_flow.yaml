@@ -1,0 +1,106 @@
+id: business-auth-flow-security
+name: "Authentication & Authorization Flow Security"
+version: "1.0.0"
+domain: "business"
+description: |
+  Business logic skill for authentication and authorization flows:
+  privilege escalation, MFA bypass, account takeover, broken object-level
+  authorization (BOLA/IDOR), and session management vulnerabilities.
+author: "Identity Security Team"
+tags:
+  - business
+  - auth
+  - idor
+  - session
+
+patterns:
+  - id: biz-idor-id-from-request
+    name: "Potential IDOR: Resource ID from Request Without Ownership Check"
+    pattern: 'userID|resourceID|recordID'
+    is_regex: true
+    severity: HIGH
+    description: |
+      IDs taken directly from URL parameters or request body without verifying
+      the authenticated user owns the resource enable Insecure Direct Object Reference.
+    suggestion: |
+      After extracting the resource ID, query the database with both the resource ID
+      and the authenticated user's ID. Return 403 if there is no match.
+    references:
+      - "CWE-639"
+      - "OWASP API1: BOLA"
+    tags: ["business", "auth", "idor"]
+
+  - id: biz-admin-flag-in-request
+    name: "Admin/Role Flag Accepted From User Request"
+    pattern: 'is_admin|isAdmin|role.*request|admin.*FormValue'
+    is_regex: true
+    severity: CRITICAL
+    description: |
+      Accepting role or admin flags from user-controlled input allows privilege escalation.
+    suggestion: |
+      Always derive roles from the authenticated session or a server-side database lookup,
+      never from request parameters.
+    references:
+      - "CWE-269"
+    tags: ["business", "auth"]
+
+  - id: biz-mfa-skip-condition
+    name: "MFA Check Potentially Skippable"
+    pattern: 'skipMFA|bypassMFA|mfa.*false'
+    is_regex: true
+    severity: CRITICAL
+    description: |
+      A flag that can skip MFA verification may be exploitable to bypass second-factor
+      authentication on privileged operations.
+    suggestion: |
+      MFA enforcement must be server-side only, derived from account security settings,
+      never from request input.
+    references:
+      - "CWE-287"
+    tags: ["business", "auth"]
+
+prompts:
+  - id: auth-flow-llm-review
+    name: "Auth/AuthZ Business Logic LLM Review"
+    system_msg: |
+      You are an authentication and authorization security expert.
+
+      Analyze the provided Go source code for:
+
+      1. **Broken Object-Level Authorization (BOLA/IDOR)**
+         - Resource IDs from request not verified against authenticated user
+         - Batch endpoints returning data for IDs not owned by requester
+
+      2. **Privilege Escalation**
+         - Role/permission derived from user-controlled input
+         - Missing privilege checks on administrative operations
+         - JWT claims accepted without server-side validation
+
+      3. **MFA Bypass**
+         - Code paths that skip MFA verification
+         - Remember-me tokens with no expiry
+         - OTP codes not rate-limited or not invalidated after use
+
+      4. **Session Management**
+         - Session tokens not rotated after privilege change
+         - Insufficient entropy in session token generation
+         - Sessions not invalidated on logout
+
+      5. **Account Takeover**
+         - Password reset tokens with long expiry or predictable values
+         - Email enumeration through timing differences
+         - Concurrent session not restricted for sensitive operations
+
+      For each issue, use this format:
+      FINDING: <title>
+      SEVERITY: <CRITICAL|HIGH|MEDIUM|LOW|INFO>
+      LINE: <line>
+      DESCRIPTION: <description>
+      SUGGESTION: <suggestion>
+      ---
+    user_msg_tmpl: |
+      File: {{.FilePath}}
+
+      ```go
+      {{.Source}}
+      ```

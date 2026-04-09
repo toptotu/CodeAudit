@@ -1,0 +1,119 @@
+id: golang-general-security
+name: "Golang General Security Patterns"
+version: "1.0.0"
+domain: "general"
+description: |
+  Core Golang security patterns covering injection, crypto misuse,
+  insecure deserialization, error handling, and OWASP Top 10 for Go.
+author: "CodeAudit Core Team"
+tags:
+  - general
+  - golang
+  - owasp
+
+patterns:
+  - id: go-fmt-sprintf-url
+    name: "SSRF via fmt.Sprintf URL Construction"
+    pattern: 'fmt\.Sprintf\([^)]*http[^)]*\)'
+    is_regex: true
+    severity: HIGH
+    description: |
+      URL constructed with fmt.Sprintf may include user-controlled data, enabling SSRF.
+    suggestion: |
+      Parse and validate the URL. Use an allowlist of permitted hosts before making outbound requests.
+    references:
+      - "CWE-918"
+    tags: ["injection", "ssrf"]
+
+  - id: go-http-serve-plaintext
+    name: "HTTP Server Without TLS"
+    pattern: 'http\.ListenAndServe\('
+    is_regex: true
+    severity: MEDIUM
+    description: |
+      Serving on plain HTTP exposes all traffic to eavesdropping and manipulation.
+    suggestion: |
+      Use http.ListenAndServeTLS() with valid certificates, or terminate TLS at a load balancer.
+    references:
+      - "CWE-319"
+    tags: ["tls", "general"]
+
+  - id: go-template-rawhtml
+    name: "Potential XSS via template.HTML"
+    pattern: 'template\.HTML\('
+    is_regex: true
+    severity: HIGH
+    description: |
+      template.HTML marks content as safe HTML, bypassing auto-escaping in html/template.
+      If the value includes user data, it enables stored/reflected XSS.
+    suggestion: |
+      Avoid template.HTML with user-controlled data. Use html/template auto-escaping instead.
+    references:
+      - "CWE-79"
+    tags: ["injection", "xss"]
+
+  - id: go-json-unmarshal-interface
+    name: "JSON Unmarshal into interface{}"
+    pattern: 'json\.Unmarshal\([^,]+,\s*&\w+interface'
+    is_regex: true
+    severity: MEDIUM
+    description: |
+      Unmarshalling JSON into interface{} produces map[string]interface{} which bypasses
+      type-safe field validation. Attackers can send unexpected field types.
+    suggestion: |
+      Unmarshal into a typed struct with explicit field definitions and validation tags.
+    references:
+      - "CWE-20"
+    tags: ["deserialization", "general"]
+
+  - id: go-error-expose-stack
+    name: "Exposing Internal Error to Client"
+    pattern: 'fmt\.Fprintf\(w,.*err|json\.NewEncoder\(w\)\.Encode\(err'
+    is_regex: true
+    severity: MEDIUM
+    description: |
+      Writing raw error values to HTTP response bodies may expose internal paths,
+      library versions, and stack traces to attackers.
+    suggestion: |
+      Log the full error internally and return a generic error message to the client.
+    references:
+      - "CWE-209"
+    tags: ["information-disclosure", "general"]
+
+  - id: go-os-open-userpath
+    name: "File Open with User-Controlled Path"
+    pattern: 'os\.Open\(r\.|os\.OpenFile\(r\.'
+    is_regex: true
+    severity: HIGH
+    description: |
+      Opening files with paths derived from HTTP request parameters enables path traversal.
+    suggestion: |
+      Sanitize the path with filepath.Clean() and verify it stays within the intended base directory.
+    references:
+      - "CWE-22"
+    tags: ["injection", "path-traversal"]
+
+prompts:
+  - id: golang-general-llm
+    name: "General Golang Security LLM Review"
+    system_msg: |
+      You are a senior Go security engineer. Review the provided Go source file for:
+      - Any use of user-controlled data flowing into sensitive sinks (SQL, OS commands, file paths, URLs)
+      - Missing input validation or output encoding
+      - Insecure default configurations
+      - Missing error handling that could lead to silent failures
+      - Use of deprecated or insecure standard library functions
+
+      For each issue found, respond in this exact format:
+      FINDING: <title>
+      SEVERITY: <CRITICAL|HIGH|MEDIUM|LOW|INFO>
+      LINE: <line number>
+      DESCRIPTION: <detailed description>
+      SUGGESTION: <remediation>
+      ---
+    user_msg_tmpl: |
+      File: {{.FilePath}}
+
+      ```go
+      {{.Source}}
+      ```

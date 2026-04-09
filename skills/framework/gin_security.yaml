@@ -1,0 +1,104 @@
+id: gin-framework-security
+name: "Gin Framework Security Patterns"
+version: "1.0.0"
+domain: "gin"
+description: |
+  Expert skill for gin-gonic/gin web framework security:
+  middleware misconfigurations, request binding pitfalls,
+  CORS, CSRF, rate limiting, and auth patterns.
+author: "Web Security Team"
+tags:
+  - framework
+  - gin
+  - golang
+
+patterns:
+  - id: gin-raw-param-in-query
+    name: "Gin: Raw URL Parameter Used Without Sanitization"
+    pattern: 'c\.Param\(|c\.Query\(|c\.PostForm\('
+    is_regex: true
+    severity: INFO
+    description: |
+      Gin request parameters passed to downstream operations without sanitization
+      may enable injection attacks.
+    suggestion: |
+      Always validate and sanitize values from c.Param(), c.Query() and c.PostForm()
+      before use. Apply input validation via a validator library.
+    references:
+      - "CWE-20"
+    tags: ["framework", "gin"]
+
+  - id: gin-should-bind-no-err-check
+    name: "Gin: ShouldBind Error Not Checked"
+    pattern: 'c\.ShouldBind\('
+    is_regex: true
+    severity: MEDIUM
+    description: |
+      Not checking the error returned by ShouldBind may proceed with zero-value
+      struct fields, leading to logic errors and potential access control bypass.
+    suggestion: |
+      Always check if err := c.ShouldBind(&req); err != nil and abort with 400.
+    references:
+      - "CWE-20"
+    tags: ["framework", "gin"]
+
+  - id: gin-panic-no-recovery
+    name: "Gin: Missing Recovery Middleware"
+    pattern: 'gin\.New\(\)'
+    is_regex: true
+    severity: HIGH
+    description: |
+      Using gin.New() without gin.Recovery() middleware means an unhandled panic
+      will crash the entire server process.
+    suggestion: |
+      Use gin.Default() which includes Recovery(), or explicitly add gin.Recovery()
+      as the first middleware.
+    references:
+      - "CWE-755"
+    tags: ["framework", "gin"]
+
+  - id: gin-logger-sensitive-data
+    name: "Gin: Default Logger May Log Sensitive Headers"
+    pattern: 'gin\.Logger\(\)'
+    is_regex: true
+    severity: LOW
+    description: |
+      The default gin.Logger() logs the full request URL including query strings,
+      which may contain access tokens or other sensitive data.
+    suggestion: |
+      Use gin.LoggerWithConfig() to exclude sensitive headers and query parameters from logs.
+    references:
+      - "CWE-532"
+    tags: ["framework", "gin"]
+
+prompts:
+  - id: gin-llm-review
+    name: "Gin Framework LLM Security Review"
+    system_msg: |
+      You are a security expert specializing in the gin-gonic/gin Golang web framework.
+
+      Analyze the provided source code for:
+      - Missing authentication middleware on protected routes
+      - Authorization checks (RBAC/ABAC) missing or bypassable
+      - CORS misconfiguration (allowing all origins with credentials)
+      - Missing CSRF protection on state-changing endpoints
+      - Rate limiting absent on authentication and sensitive endpoints
+      - Insecure file serving (serving directories, path traversal via c.File())
+      - Binding large request bodies without size limits
+      - Returning sensitive data in error responses
+      - Debug routes (/debug/pprof, /swagger) accessible without auth
+      - JWT validation logic errors
+
+      For each issue, use this format:
+      FINDING: <title>
+      SEVERITY: <CRITICAL|HIGH|MEDIUM|LOW|INFO>
+      LINE: <line>
+      DESCRIPTION: <description>
+      SUGGESTION: <suggestion>
+      ---
+    user_msg_tmpl: |
+      File: {{.FilePath}}
+
+      ```go
+      {{.Source}}
+      ```
